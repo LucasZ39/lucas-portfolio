@@ -1,0 +1,709 @@
+/* ──────────────────────────────────────────────────────
+   DEPARTURE — Scroll-driven plane takeoff
+   ────────────────────────────────────────────────────── */
+
+:root {
+  --ink:     #f4f7ff;
+  --ink-dim: rgba(244, 247, 255, 0.6);
+  --accent:  #7ec8ff;
+  --warm:    #ffb877;
+  --rail:    rgba(255, 255, 255, 0.12);
+
+  /* Sky stops — JS overrides these as t advances */
+  --sky-top:    #0a0e2e;
+  --sky-mid:    #1a1f4a;
+  --sky-bottom: #2c2350;
+  --sun-color:  rgba(255, 184, 119, 0);
+  --horizon-glow: rgba(255, 120, 80, 0);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #05060f;
+  color: var(--ink);
+  overflow-x: hidden;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Top chrome (fixed) ──────────────────────────────── */
+.chrome {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 36px;
+  padding-right: 320px;   /* keep metadata clear of the profile CTAs */
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+  pointer-events: none;
+  mix-blend-mode: difference;
+  text-transform: uppercase;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 13px;
+}
+.brand-mark { color: var(--accent); font-size: 18px; line-height: 1; }
+.chrome-meta { display: flex; gap: 10px; color: var(--ink); }
+.dot-sep { opacity: 0.5; }
+
+/* ── Scroll hint ──────────────────────────────────── */
+.scroll-indicator {
+  position: fixed;
+  bottom: 32px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex; flex-direction: column;
+  gap: 10px; align-items: center;
+  color: var(--ink);
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  mix-blend-mode: difference;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+.scroll-indicator.gone { opacity: 0; }
+
+/* ── Progress rail (top) ─────────────────────────── */
+.progress-rail {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--rail);
+  z-index: 70;
+}
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--warm));
+  box-shadow: 0 0 12px var(--accent);
+  transition: width 0.05s linear;
+}
+
+/* ── Phase rail (right side) ─────────────────────── */
+.phase-rail {
+  position: fixed;
+  top: 50%;
+  right: 32px;
+  transform: translateY(-50%);
+  z-index: 55;
+  display: flex; flex-direction: column;
+  gap: 14px;
+  font-family: 'Space Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  mix-blend-mode: difference;
+}
+.phase-tick {
+  display: flex; align-items: center; gap: 10px;
+  justify-content: flex-end;
+  transition: all 0.3s ease;
+  opacity: 0.4;
+}
+.phase-tick::after {
+  content: '';
+  width: 18px; height: 1px;
+  background: currentColor;
+  transition: all 0.3s ease;
+}
+.phase-tick.active {
+  opacity: 1;
+  color: var(--ink);
+}
+.phase-tick.active::after {
+  width: 36px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.phase-tick span { white-space: nowrap; }
+
+/* ── Scroll track ────────────────────────────────── */
+.track {
+  position: relative;
+  height: 600vh;   /* 6 viewports of scroll */
+}
+
+/* ── Sticky cinematic scene ──────────────────────── */
+.scene {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: #05060f;
+}
+
+/* ── Sky background (interpolated by JS) ─────────── */
+.sky {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--sky-top) 0%,
+    var(--sky-mid) 50%,
+    var(--sky-bottom) 100%
+  );
+  transition: filter 0.4s ease;
+  will-change: background;
+}
+
+/* ── Stars (canvas) ──────────────────────────────── */
+.stars {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+}
+
+/* ── Sun / horizon glow ──────────────────────────── */
+.sun {
+  position: absolute;
+  left: 50%;
+  top: 65%;
+  width: 600px;
+  height: 600px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle at center,
+    var(--sun-color) 0%,
+    rgba(255, 120, 80, 0) 40%,
+    transparent 70%
+  );
+  filter: blur(8px);
+  pointer-events: none;
+  transition: top 0.4s ease;
+  will-change: top;
+}
+
+/* ── Horizon (mountains) ─────────────────────────── */
+.horizon {
+  position: absolute;
+  bottom: 25%;
+  left: -5%;
+  right: -5%;
+  height: 14vh;
+  pointer-events: none;
+  transition: bottom 0.05s linear, opacity 0.4s;
+  will-change: bottom, opacity;
+}
+.horizon svg { width: 100%; height: 100%; display: block; }
+
+/* ── Cloud bands ─────────────────────────────────── */
+.cloud-band {
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  pointer-events: none;
+  will-change: transform;
+}
+.band-far  { top: 25%; height: 22vh; opacity: 0.55; }
+.band-mid  { top: 35%; height: 30vh; opacity: 0.75; }
+.band-near { top: 50%; height: 38vh; opacity: 0.9;  }
+
+/* Clouds are SVG injected by JS for variety */
+.cloud {
+  position: absolute;
+  filter: blur(1px);
+}
+
+/* ── Ground ──────────────────────────────────────── */
+.ground {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 0;
+  height: 25vh;
+  background:
+    linear-gradient(180deg,
+      rgba(45, 40, 70, 0.3) 0%,
+      rgba(18, 15, 30, 0.95) 35%,
+      rgba(8, 8, 18, 1) 100%);
+  border-top: 1px solid rgba(120, 140, 200, 0.15);
+  transform-origin: 50% 0%;
+  will-change: transform, opacity;
+  transition: opacity 0.4s ease;
+}
+
+/* Runway (sits on ground) */
+.runway {
+  position: absolute;
+  left: -10%; right: -10%;
+  top: 35%;
+  height: 26%;
+  perspective: 400px;
+  transform-style: preserve-3d;
+}
+.runway::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg,
+      rgba(30, 32, 42, 1) 0%,
+      rgba(20, 22, 30, 1) 100%);
+  transform: rotateX(64deg);
+  transform-origin: 50% 100%;
+  box-shadow:
+    inset 0 0 80px rgba(0, 0, 0, 0.6),
+    0 -2px 12px rgba(120, 150, 220, 0.1);
+}
+.runway-edge {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,220,150,0.6) 20%, rgba(255,220,150,0.6) 80%, transparent);
+  z-index: 2;
+  pointer-events: none;
+}
+.edge-top    { top: 0; box-shadow: 0 0 8px rgba(255,220,150,0.5); }
+.edge-bottom { bottom: 0; box-shadow: 0 0 12px rgba(255,220,150,0.7); }
+.runway-stripes {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-image:
+    linear-gradient(90deg,
+      transparent 0,
+      transparent 40px,
+      rgba(255,245,180,0.85) 40px,
+      rgba(255,245,180,0.85) 120px);
+  background-size: 160px 100%;
+  transform: rotateX(64deg);
+  transform-origin: 50% 100%;
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(180deg, transparent 0%, black 35%, black 100%);
+  will-change: background-position;
+}
+
+/* Speed streaks */
+.streaks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* ── Plane ───────────────────────────────────────── */
+.plane-wrap {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  perspective: 900px;
+  will-change: transform;
+}
+.plane {
+  position: absolute;
+  /* Aligned to the runway surface (about 82% from top of viewport). */
+  left: 50%;
+  top: 82%;
+  width: 520px;
+  height: 220px;
+  transform-origin: 60% 50%;
+  transform: translate(-65%, -50%) rotate(0deg);
+  will-change: transform;
+  filter: drop-shadow(0 24px 24px rgba(0, 0, 0, 0.5));
+  transition: filter 0.5s;
+}
+.plane-svg {
+  width: 100%; height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+/* Gear retracts */
+.gear {
+  transform-origin: center 8px;
+  transition: transform 0.5s cubic-bezier(0.5, 0, 0.5, 1), opacity 0.4s;
+}
+.gear.retracted {
+  transform: translateY(-12px) scaleY(0.1);
+  opacity: 0;
+}
+
+/* Strobe */
+.strobe {
+  opacity: 0;
+  animation: strobe-flash 1.8s steps(2, end) infinite;
+}
+@keyframes strobe-flash {
+  0%, 90%, 95%, 100% { opacity: 0; }
+  92%, 97% { opacity: 1; }
+}
+
+/* Engine exhaust */
+.exhaust {
+  position: absolute;
+  left: 6%;      /* behind engine */
+  top: 64%;
+  width: 0;      /* JS scales this */
+  height: 14px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 220, 160, 0.0) 0%,
+    rgba(255, 200, 120, 0.4) 20%,
+    rgba(180, 200, 255, 0.55) 60%,
+    rgba(180, 200, 255, 0) 100%);
+  filter: blur(4px);
+  transform-origin: right center;
+  transform: translateX(-100%);
+  transition: width 0.25s ease, opacity 0.3s;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Hero text overlays ──────────────────────────── */
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+.hero-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg,
+    rgba(5, 6, 15, 0.55) 0%,
+    rgba(5, 6, 15, 0.30) 25%,
+    rgba(5, 6, 15, 0.10) 45%,
+    transparent 60%);
+  pointer-events: none;
+}
+.hero-text {
+  position: absolute;
+  left: 8vw;
+  top: 18vh;
+  max-width: 520px;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  opacity: 0;
+  transform: translateY(20px);
+  will-change: opacity, transform;
+  /* opacity & translateY driven directly from JS scroll-t (see setHero) */
+}
+.hero-eyebrow {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  color: var(--accent);
+  margin-bottom: 18px;
+  text-transform: uppercase;
+}
+.hero-title {
+  font-family: 'Instrument Serif', 'Playfair Display', Georgia, serif;
+  font-size: clamp(46px, 7.4vw, 104px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  text-shadow: 0 4px 40px rgba(0, 0, 0, 0.5);
+  margin-bottom: 14px;
+}
+/* When the title has explicit line breaks (<br>), let it size to its
+   longest line on desktop so it doesn't auto-wrap into more lines.
+   max-width overrides the .hero-text parent constraint (520px). */
+@media (min-width: 720px) {
+  .hero-title {
+    width: max-content;
+    max-width: min(90vw, 1100px);
+  }
+}
+.hero-sub {
+  font-family: 'Space Mono', monospace;
+  font-size: 16px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 18px;
+  opacity: 1;
+}
+.hero-text[data-phase="0"] .hero-sub { margin-bottom: 10px; }
+.intro-email {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 18px;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: rgba(244, 247, 255, 0.82);
+  text-decoration-color: rgba(126, 200, 255, 0.45);
+  text-underline-offset: 4px;
+  pointer-events: auto;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+.intro-email:hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+.hero-body {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 300;
+  color: rgba(244, 247, 255, 0.85);
+  max-width: 460px;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
+  margin-bottom: 18px;
+}
+.hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tag {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(125, 200, 255, 0.08);
+  border: 1px solid rgba(125, 200, 255, 0.3);
+  padding: 5px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.tag-link {
+  pointer-events: auto;
+  text-decoration: none;
+  background: rgba(255, 184, 119, 0.1);
+  border-color: rgba(255, 184, 119, 0.4);
+  color: var(--warm);
+  transition: all 0.2s ease;
+}
+.tag-link:hover {
+  background: rgba(255, 184, 119, 0.2);
+  border-color: var(--warm);
+  transform: translateY(-1px);
+}
+/* Compact title variant — used in Projects phase to leave room for cards */
+.hero-text.is-stack .hero-title {
+  font-size: clamp(34px, 5vw, 60px);
+  margin-bottom: 10px;
+}
+.hero-text.is-stack .hero-sub {
+  margin-bottom: 20px;
+}
+
+/* ── Project stack ─────────────────────────────── */
+.project-stack {
+  display: grid;
+  gap: 10px;
+  max-width: 540px;
+  pointer-events: auto;
+}
+.project-card {
+  display: block;
+  padding: 12px 16px;
+  background: rgba(125, 200, 255, 0.06);
+  border: 1px solid rgba(125, 200, 255, 0.20);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  backdrop-filter: blur(2px);
+  transition: all 0.2s ease;
+}
+.project-card:hover {
+  background: rgba(125, 200, 255, 0.14);
+  border-color: var(--accent);
+  border-left-color: var(--warm);
+  transform: translateX(4px);
+}
+.project-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.project-card-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.project-card-arrow {
+  font-family: 'Space Mono', monospace;
+  font-size: 14px;
+  color: var(--accent);
+  transition: transform 0.2s ease;
+}
+.project-card:hover .project-card-arrow {
+  transform: translate(3px, -3px);
+  color: var(--warm);
+}
+.project-card-desc {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 300;
+  color: rgba(244, 247, 255, 0.72);
+  margin-bottom: 8px;
+}
+.project-card-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.project-card-tags .tag {
+  font-size: 9px;
+  padding: 3px 8px;
+  letter-spacing: 0.08em;
+}
+
+/* Cinema strip — 5 portrait tiles in a row */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  max-width: 640px;
+  margin-top: 8px;
+  pointer-events: auto;
+}
+.photo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  cursor: pointer;
+}
+.photo-frame {
+  aspect-ratio: 3 / 4;
+  border-radius: 8px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(125,200,255,0.18), rgba(255,184,119,0.18)),
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 6px, transparent 6px 12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: all 0.2s ease;
+}
+.photo:hover .photo-frame {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+.photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+.photo figcaption {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 247, 255, 0.72);
+  text-align: center;
+  line-height: 1.3;
+  padding: 0 2px;
+}
+
+/* ── Profile CTAs ───────────────────────────────── */
+.top-actions {
+  position: fixed;
+  top: 18px;
+  right: 24px;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.resume-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px 9px 16px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--ink);
+  background: rgba(5, 6, 15, 0.45);
+  border: 1px solid rgba(125, 200, 255, 0.35);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
+}
+.resume-link:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(125, 200, 255, 0.12);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(125, 200, 255, 0.18);
+}
+.resume-link svg { transition: transform 0.2s ease; }
+.resume-link:hover svg { transform: translate(1px, -1px); }
+
+/* ── Vignette ───────────────────────────────────── */
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(0, 0, 0, 0.4) 100%);
+  z-index: 25;
+}
+
+/* ── Responsive ─────────────────────────────────── */
+@media (max-width: 720px) {
+  .phase-rail { display: none; }
+  .chrome { padding: 14px 16px; padding-right: 220px; font-size: 10px; }
+  .chrome-meta { display: none; } /* save space on mobile, phase still shown via hero */
+  .top-actions { top: 12px; right: 12px; gap: 6px; }
+  .resume-link {
+    padding: 7px 11px 7px 13px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+  }
+  .hero-text { left: 6vw; right: 6vw; top: 14vh; max-width: none; }
+  .hero-eyebrow { font-size: 10px; margin-bottom: 12px; }
+  .hero-body { font-size: 14px; max-width: 100%; }
+  .photo-grid {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: min(42vw, 156px);
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding: 3px 2px 10px;
+    scroll-snap-type: inline mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .photo-grid::-webkit-scrollbar { display: none; }
+  .photo { scroll-snap-align: start; }
+  .plane { width: 320px; height: 140px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .strobe { animation: none; opacity: 0.4; }
+}
