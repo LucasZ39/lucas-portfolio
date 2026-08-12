@@ -461,6 +461,9 @@ function setStarsFrame() {
 // Phase boundaries (t values) — also used by hero text and phase tick highlighting
 const PHASE_EDGES  = [0.00, 0.08, 0.22, 0.38, 0.52, 0.66, 0.82, 1.00];
 const PHASE_LABELS = ['INTRO', 'EDUCATION', 'PROJECT', 'INTERNSHIP I', 'INTERNSHIP II', 'INTERNSHIP III', 'PERSONAL'];
+const HERO_FADE = window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  ? 0.012  // desktop/trackpad: quick handoff with minimal overlap
+  : 0.04;  // touch screens: retain the existing softer transition
 let _lastAlt = -1;
 let _lastLabel = '';
 
@@ -474,7 +477,7 @@ function setHero(t) {
 
   // Compute opacity per hero text directly from t (avoids transition reset on re-toggle).
   // Fade in just before the phase starts, hold full, fade out at the end.
-  const fade = 0.04;
+  const fade = HERO_FADE;
   heroTexts.forEach((el, i) => {
     const start = PHASE_EDGES[i];
     const end   = PHASE_EDGES[i + 1];
