@@ -90,7 +90,7 @@ After pushing:
 
 Find the relevant `.hero-text` block in `index.html`, edit the content, test locally, and publish `index.html` through Git.
 
-### Update the résumé
+### Update the resume
 
 1. Export the new résumé as a PDF.
 2. Replace `resume.pdf` while keeping that exact filename.
