@@ -134,7 +134,7 @@ body {
 /* ── Scroll track ────────────────────────────────── */
 .track {
   position: relative;
-  height: 600vh;   /* 6 viewports of scroll */
+  height: 690vh;   /* ~1 viewport per phase */
 }
 
 /* ── Sticky cinematic scene ──────────────────────── */
@@ -505,6 +505,61 @@ body {
   margin-bottom: 20px;
 }
 
+/* ── Next Chapter (TikTok) ─────────────────────── */
+.next-chapter .hero-title {
+  text-shadow: -2px 0 0 rgba(37, 244, 238, 0.55), 2px 0 0 rgba(254, 44, 85, 0.55),
+               0 4px 40px rgba(0, 0, 0, 0.5);
+}
+.route {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 460px;
+  margin: 4px 0 20px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+.route-node { white-space: nowrap; }
+.route-node.dest { color: var(--ink); }
+.route-line {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, rgba(244, 247, 255, 0.45) 0 6px, transparent 6px 12px);
+}
+.route-plane {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -55%);
+  color: var(--warm);
+  font-size: 14px;
+  transition: left 1.6s cubic-bezier(0.22, 0.8, 0.2, 1);
+}
+.next-chapter.is-active .route-plane { left: 100%; }
+.tag-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--warm);
+  background: rgba(255, 184, 119, 0.1);
+  border-color: rgba(255, 184, 119, 0.45);
+}
+.pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warm);
+  animation: pulse 1.8s infinite;
+}
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 184, 119, 0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(255, 184, 119, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 184, 119, 0); }
+}
+
 /* ── Project stack ─────────────────────────────── */
 .project-stack {
   display: grid;
@@ -705,4 +760,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .strobe { animation: none; opacity: 0.4; }
+  .pulse { animation: none; }
+  .route-plane { transition: none; }
 }

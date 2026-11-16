@@ -459,11 +459,14 @@ function setStarsFrame() {
 }
 
 // Phase boundaries (t values) — also used by hero text and phase tick highlighting
-const PHASE_EDGES  = [0.00, 0.08, 0.22, 0.38, 0.52, 0.66, 0.82, 1.00];
-const PHASE_LABELS = ['INTRO', 'EDUCATION', 'PROJECT', 'INTERNSHIP I', 'INTERNSHIP II', 'INTERNSHIP III', 'PERSONAL'];
+const PHASE_EDGES  = [0.00, 0.07, 0.19, 0.33, 0.46, 0.58, 0.70, 0.84, 1.00];
+const PHASE_LABELS = ['INTRO', 'EDUCATION', 'PROJECT', 'INTERNSHIP I', 'INTERNSHIP II', 'INTERNSHIP III', 'NEXT CHAPTER', 'PERSONAL'];
+// Sequential handoff: the outgoing phase drifts up and blurs out over
+// [end - FADE, end]; the incoming one rises in over [start, start + FADE].
+// No overlap, so text never stacks, but each fade is long enough to feel smooth.
 const HERO_FADE = window.matchMedia('(hover: hover) and (pointer: fine)').matches
-  ? 0.012  // desktop/trackpad: quick handoff with minimal overlap
-  : 0.04;  // touch screens: retain the existing softer transition
+  ? 0.018
+  : 0.03;
 let _lastAlt = -1;
 let _lastLabel = '';
 
@@ -482,18 +485,21 @@ function setHero(t) {
     const start = PHASE_EDGES[i];
     const end   = PHASE_EDGES[i + 1];
     let opacity;
-    if (t < start - fade || t > end) {
+    const isLast = i === heroTexts.length - 1;
+    const inFade  = i === 0 ? 1 : smoothstep(start, start + fade, t);
+    const outFade = isLast ? 1 : 1 - smoothstep(end - fade, end, t);
+    if (t < start || (!isLast && t > end)) {
       opacity = 0;
-    } else if (i === 0 && t < fade) {
-      // First phase — full opacity from the very start
-      opacity = 1;
     } else {
-      const inFade  = smoothstep(start - fade, start, t);
-      const outFade = 1 - smoothstep(end - fade, end, t);
       opacity = Math.min(inFade, outFade);
     }
+    // Entering text rises from below; leaving text drifts upward.
+    const leaving = outFade < 1;
+    const dy = (leaving ? -16 : 22) * (1 - opacity);
     el.style.opacity = opacity.toFixed(3);
-    el.style.transform = `translateY(${(20 * (1 - opacity)).toFixed(1)}px)`;
+    el.style.transform = `translateY(${dy.toFixed(1)}px)`;
+    el.style.filter = opacity > 0.995 ? 'none' : `blur(${(6 * (1 - opacity)).toFixed(2)}px)`;
+    el.classList.toggle('is-active', opacity > 0.6);
     // Fully faded phases still occupy the same screen position. Hide them
     // from hit testing so their cards cannot intercept links in the active phase.
     el.style.visibility = opacity > 0.001 ? 'visible' : 'hidden';
@@ -544,8 +550,8 @@ function update() {
   const t = STATE.t;
 
   // Start preparing the gallery during Internship III, comfortably before
-  // the Personal phase begins at t = 0.82.
-  if (t >= 0.66) preparePersonalPhotos();
+  // the Personal phase begins at t = 0.84.
+  if (t >= 0.58) preparePersonalPhotos();
 
   setSky(t);
   setStars(t);
