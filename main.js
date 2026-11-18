@@ -597,6 +597,25 @@ setInterval(() => {
   }
 }, 100);
 
+// ─────────────────────────────────────────────────────
+// CLICKABLE PHASE RAIL — jump to the start of a section
+// ─────────────────────────────────────────────────────
+phaseTicks.forEach((tick, i) => {
+  tick.setAttribute('role', 'button');
+  tick.tabIndex = 0;
+  tick.setAttribute('aria-label', `Jump to ${tick.textContent.trim()}`);
+  const go = () => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    // Land just past the fade-in so the section's text is fully visible
+    const target = i === 0 ? 0 : PHASE_EDGES[i] + HERO_FADE + 0.004;
+    window.scrollTo({ top: target * max, behavior: 'smooth' });
+  };
+  tick.addEventListener('click', go);
+  tick.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+  });
+});
+
 // Expose for debugging (before the first update, in case any frame throws)
 window.__departure = { STATE, setSky, setPlane, setHero, heroTexts, PHASE_EDGES };
 

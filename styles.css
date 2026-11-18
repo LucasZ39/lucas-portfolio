@@ -130,6 +130,9 @@ body {
   box-shadow: 0 0 8px var(--accent);
 }
 .phase-tick span { white-space: nowrap; }
+.phase-tick { cursor: pointer; }
+.phase-tick:hover { opacity: 0.85; }
+.phase-tick:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
 
 /* ── Scroll track ────────────────────────────────── */
 .track {
